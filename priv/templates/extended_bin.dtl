@@ -29,13 +29,27 @@ find_erts_dir() {
 relx_rem_sh() {
     # Generate a unique id used to allow multiple remsh to the same node
     # transparently
+
+    # User can specify an sname without @hostname
+    # This will fail when creating remote shell
+    # So here we check for @ and add @hostname if missing
+    case $NAME in
+        *@*)
+            REMSH_NAME=$NAME
+            ;;
+        *)
+            # Add @hostname
+            REMSH_NAME=$NAME@`hostname -f`
+            ;;
+    esac
+
     id="remsh$(relx_gen_id)-${NAME}"
 
     # Get the node's ticktime so that we use the same thing.
     TICKTIME="$(relx_nodetool rpcterms net_kernel get_net_ticktime)"
 
     # Setup remote shell command to control node
-    exec "$BINDIR/erl" "$NAME_TYPE" "$id" -remsh "$NAME" -boot start_clean \
+    exec "$BINDIR/erl" "$NAME_TYPE" "$id" -remsh "$REMSH_NAME" -boot start_clean \
          -setcookie "$COOKIE" -kernel net_ticktime $TICKTIME
 }
 
@@ -107,19 +121,6 @@ fi
 # Extract the name type and name from the NAME_ARG for REMSH
 NAME_TYPE="$(echo "$NAME_ARG" | awk '{print $1}')"
 NAME="$(echo "$NAME_ARG" | awk '{print $2}')"
-
-# User can specify an sname without @hostname
-# This will fail when creating remote shell
-# So here we check for @ and add @hostname if missing
-case $NAME in
-    *@*)
-        # Nothing to do
-        ;;
-    *)
-        # Add @hostname
-        NAME=$NAME@`hostname -f`
-        ;;
-esac
 
 PIPE_DIR="${PIPE_DIR:-/tmp/erl_pipes/$NAME/}"
 
@@ -226,6 +227,18 @@ case "$1" in
     ping)
         ## See if the VM is alive
         if ! relx_nodetool "ping"; then
+            exit $?
+        fi
+        ;;
+    rpc)
+        ## Send RPC command. Expects MFA as params
+        if ! relx_nodetool $@; then
+            exit $?
+        fi
+        ;;
+    rpcterms)
+        ## Send RPC command. Expects MFA as params
+        if ! relx_nodetool $@; then
             exit $?
         fi
         ;;
